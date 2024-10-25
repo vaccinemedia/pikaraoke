@@ -548,7 +548,7 @@ class Karaoke:
                         time.sleep(0.1)  # prevents loop from trying to replay track
                         max_retries -= 1
                     if self.is_playing:
-                        logging.info("Stream is playing")
+                        logging.debug("Stream is playing")
                         break
                     else:
                         logging.error(
@@ -819,6 +819,7 @@ class Karaoke:
 
     def run(self):
         logging.info("Starting PiKaraoke!")
+        logging.info(f"Connect the player host to: {self.url}/splash")
         self.running = True
         while self.running:
             try:
@@ -841,5 +842,5 @@ class Karaoke:
                 self.log_ffmpeg_output()
                 self.handle_run_loop()
             except KeyboardInterrupt:
-                logging.warn("Keyboard interrupt: Exiting PiKaraoke...")
+                logging.warn("Keyboard interrupt: Exiting pikaraoke...")
                 self.running = False
