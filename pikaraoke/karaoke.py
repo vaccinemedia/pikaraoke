@@ -820,6 +820,7 @@ class Karaoke:
     def run(self):
         logging.info("Starting PiKaraoke!")
         logging.info(f"Connect the player host to: {self.url}/splash")
+        logging.info(f"Add mp3s to: {self.filler_music_path} to play standard songs when there are no singers!")
         self.running = True
         while self.running:
             try:
