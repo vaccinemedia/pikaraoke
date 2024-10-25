@@ -323,12 +323,13 @@
   <div id="qr-code">
     <img
       src="{{ url_for('qrcode') }}"
-      width="100px"
+      width="300px"
       style="image-rendering: pixelated"
       alt="qrcode"
     />
     <div class="is-size-5 stroke">
-      <div>&nbsp;{{ url }}</div>
+      <div>piKaraoke server URL:&nbsp;{{ url }}</div>
+      <div>Filler music directory on this device: {{ filler_music_path }}</div>
     </div>
   </div>
   {% endif %}
