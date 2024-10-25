@@ -77,6 +77,7 @@ class Karaoke:
         port=5555,
         ffmpeg_port=5556,
         download_path="/usr/lib/pikaraoke/songs",
+        filler_music_path="/usr/lib/pikaraoke/mp3s",  # New parameter for filler music
         hide_url=False,
         hide_raspiwifi_instructions=False,
         hide_splash_screen=False,
@@ -110,6 +111,10 @@ class Karaoke:
         self.screensaver_timeout = screensaver_timeout
         self.url_override = url
         self.prefer_hostname = prefer_hostname
+        self.filler_music_path = filler_music_path  # Store filler music path
+        self.filler_queue = []  # Initialize the filler queue
+        self.available_filler_songs = []  # Initialize the available filler songs list
+        self.load_filler_songs()  # Populate the filler songs
 
         # other initializations
         self.platform = get_platform()
@@ -338,6 +343,40 @@ class Karaoke:
 
         self.available_songs = sorted(files_grabbed, key=lambda f: str.lower(os.path.basename(f)))
 
+    def get_available_filler_songs(self):
+        logging.info(f"Fetching available filler songs in: {self.filler_music_path}")
+        filler_songs = []
+        P = Path(self.filler_music_path)
+        for file in P.rglob("*.mp3"):
+            if os.path.isfile(file.as_posix()):
+                logging.debug("adding filler song: " + file.name)
+                filler_songs.append(file.as_posix())
+
+        self.available_filler_songs = random.sample(filler_songs, len(filler_songs))
+
+    def load_filler_songs(self):
+        """Populates available filler songs from the filler_music_path."""
+        if os.path.exists(self.filler_music_path):
+            self.available_filler_songs = [
+                os.path.join(self.filler_music_path, f)
+                for f in os.listdir(self.filler_music_path)
+                if f.endswith('.mp3')
+            ]
+        else:
+            logging.warning(f"Filler music path {self.filler_music_path} does not exist.")
+
+    def queue_filler_music(self):
+        logging.info("Adding filler music to queue.")
+        if not self.available_filler_songs:
+            self.get_available_filler_songs()
+
+        if self.available_filler_songs:
+            self.filler_queue = self.available_filler_songs.copy()
+            random.shuffle(self.filler_queue)
+            logging.info(f"Filler music queue initialized with {len(self.filler_queue)} songs.")
+        else:
+            logging.warning("No available filler songs.")
+
     def delete(self, song_path):
         logging.info("Deleting song: " + song_path)
         with contextlib.suppress(FileNotFoundError):
@@ -494,7 +533,7 @@ class Karaoke:
                 pass
             else:
                 if stream_ready_string in decode_ignore(output):
-                    logging.debug("Stream ready!")
+                    logging.debug("Karaoke Stream ready!")
                     self.now_playing = self.filename_from_path(file_path)
                     self.now_playing_filename = file_path
                     self.now_playing_transpose = semitones
@@ -509,7 +548,7 @@ class Karaoke:
                         time.sleep(0.1)  # prevents loop from trying to replay track
                         max_retries -= 1
                     if self.is_playing:
-                        logging.debug("Stream is playing")
+                        logging.info("Stream is playing")
                         break
                     else:
                         logging.error(
@@ -517,6 +556,73 @@ class Karaoke:
                         )
                         self.end_song()
                         break
+
+    def play_filler_file(self, file_path):
+        logging.info(f"Playing filler music file: {file_path}")
+        stream_uid = int(time.time())
+        stream_url = f"{self.ffmpeg_url}/{stream_uid}"
+        # pass a 0.0.0.0 IP to ffmpeg which will work for both hostnames and direct IP access
+        ffmpeg_url = f"http://0.0.0.0:{self.ffmpeg_port}/{stream_uid}"
+
+        try:
+            input = ffmpeg.input(file_path)
+            audio = input.audio
+
+            # Use 'copy' to avoid re-encoding the audio
+            output = ffmpeg.output(
+                audio,
+                ffmpeg_url,
+                acodec="copy",  # Directly copy the audio without re-encoding
+                listen=1,
+                f="mp3",
+            )
+
+            args = output.get_args()
+            logging.debug(f"COMMAND: ffmpeg " + " ".join(args))
+
+            self.kill_ffmpeg()
+            self.ffmpeg_process = output.run_async(pipe_stderr=True, pipe_stdin=True)
+
+            # Start logging ffmpeg output
+            self.ffmpeg_log = Queue()
+            t = Thread(target=enqueue_output, args=(self.ffmpeg_process.stderr, self.ffmpeg_log))
+            t.daemon = True
+            t.start()
+
+            # Wait for the stream to be ready
+            while self.ffmpeg_process.poll() is None:
+                try:
+                    output = self.ffmpeg_log.get_nowait()
+                    logging.debug("[FFMPEG] " + decode_ignore(output))
+                except Empty:
+                    pass
+                else:
+                    if "Stream #" in decode_ignore(output):
+                        logging.debug("Filler music stream ready!")
+                        self.now_playing = self.filename_from_path(file_path)
+                        self.now_playing_filename = file_path
+                        self.now_playing_url = stream_url
+                        self.now_playing_user = "Filler Music"  # Display 'Filler Music' on the screen
+                        self.is_paused = False
+
+                        # Pause until the stream is playing
+                        max_retries = 100
+                        while self.is_playing == False and max_retries > 0:
+                            time.sleep(0.1)  # prevents loop from trying to replay track
+                            max_retries -= 1
+                        if self.is_playing:
+                            logging.info("Filler song is playing")
+                            break
+                        else:
+                            logging.error(
+                                "Filler song was not playable! Run with debug logging to see output. Skipping track"
+                            )
+                            self.end_song()
+                            break
+
+        except Exception as e:
+            logging.error(f"Error playing filler music: {str(e)}")
+            self.end_song()  # Ensure we end the song in case of failure
 
     def kill_ffmpeg(self):
         logging.debug("Killing ffmpeg process")
@@ -700,14 +806,25 @@ class Karaoke:
         self.now_playing_transpose = 0
         self.ffmpeg_log = None
 
+    def play_filler_music(self):
+        if not self.filler_queue:
+            self.queue_filler_music()
+
+        if self.filler_queue:
+            filler_song = self.filler_queue.pop(0)
+            logging.info(f"Playing filler song: {filler_song}")
+            self.play_filler_file(filler_song)
+        else:
+            logging.warning("Filler queue is empty.")
+
     def run(self):
         logging.info("Starting PiKaraoke!")
-        logging.info(f"Connect the player host to: {self.url}/splash")
         self.running = True
         while self.running:
             try:
                 if not self.is_file_playing() and self.now_playing != None:
                     self.reset_now_playing()
+
                 if len(self.queue) > 0:
                     if not self.is_file_playing():
                         self.reset_now_playing()
@@ -716,8 +833,13 @@ class Karaoke:
                             self.handle_run_loop()
                             i += self.loop_interval
                         self.play_file(self.queue[0]["file"], self.queue[0]["semitones"])
+                else:
+                    if not self.is_file_playing():
+                        self.reset_now_playing()
+                        self.play_filler_music()
+
                 self.log_ffmpeg_output()
                 self.handle_run_loop()
             except KeyboardInterrupt:
-                logging.warn("Keyboard interrupt: Exiting pikaraoke...")
+                logging.warn("Keyboard interrupt: Exiting PiKaraoke...")
                 self.running = False

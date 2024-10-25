@@ -702,6 +702,22 @@ def get_default_dl_dir(platform):
         else:
             return "~/pikaraoke-songs"
 
+def get_default_filler_music_dir(platform):
+    if raspberry_pi:
+        return "~/pikaraoke-mp3s"
+    elif platform == "windows":
+        legacy_directory = os.path.expanduser("~\\pikaraoke\\mp3s")
+        if os.path.exists(legacy_directory):
+            return legacy_directory
+        else:
+            return "~\\pikaraoke-mp3s"
+    else:
+        legacy_directory = "~/pikaraoke/mp3s"
+        if os.path.exists(legacy_directory):
+            return legacy_directory
+        else:
+            return "~/pikaraoke-mp3s"
+
 
 def main():
     platform = get_platform()
@@ -715,6 +731,7 @@ def main():
     default_prefer_hostname = False
 
     default_dl_dir = get_default_dl_dir(platform)
+    default_filler_music_dir = get_default_filler_music_dir(platform)
     default_youtubedl_path = "yt-dlp"
 
     # parse CLI args
@@ -746,6 +763,13 @@ def main():
         nargs="+",
         help="Desired path for downloaded songs. (default: %s)" % default_dl_dir,
         default=default_dl_dir,
+        required=False,
+    )
+    parser.add_argument(
+        "--filler-music-path",
+        nargs="+",
+        help="Desired path for MP3 filler music. (default: %s)" % default_filler_music_dir,
+        default=default_filler_music_dir,
         required=False,
     )
     parser.add_argument(
@@ -877,6 +901,14 @@ def main():
         print("Creating download path: " + dl_path)
         os.makedirs(dl_path)
 
+    # setup/create filler music directory if necessary
+    filler_music_dir = os.path.expanduser(arg_path_parse(args.filler_music_path))
+    if not filler_music_dir.endswith("/"):
+        filler_music_dir += "/"
+    if not os.path.exists(filler_music_dir):
+        print("Creating filler music path: " + filler_music_dir)
+        os.makedirs(filler_music_dir)
+
     parsed_volume = float(args.volume)
     if parsed_volume > 1 or parsed_volume < 0:
         # logging.warning("Volume must be between 0 and 1. Setting to default: %s" % default_volume)
@@ -906,6 +938,7 @@ def main():
         url=args.url,
         ffmpeg_url=args.ffmpeg_url,
         prefer_hostname=args.prefer_hostname,
+        filler_music_path=filler_music_dir,  # New argument for filler music path
     )
     k.upgrade_youtubedl()
 
