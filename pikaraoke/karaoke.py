@@ -495,7 +495,7 @@ class Karaoke:
                 f="mp4",
                 video_bitrate="500k",
                 movflags="frag_keyframe+default_base_moof",
-            )
+            ).global_args("-f", "pulse", "-i", "default")
         else:
             video = input.video
             output = ffmpeg.output(
@@ -509,7 +509,7 @@ class Karaoke:
                 f="mp4",
                 video_bitrate=vbitrate,
                 movflags="frag_keyframe+default_base_moof",
-            )
+            ).global_args("-f", "pulse", "-i", "default")
 
         args = output.get_args()
         logging.debug(f"COMMAND: ffmpeg " + " ".join(args))
@@ -575,7 +575,7 @@ class Karaoke:
                 acodec="copy",  # Directly copy the audio without re-encoding
                 listen=1,
                 f="mp3",
-            )
+            ).global_args("-f", "pulse", "-i", "default")
 
             args = output.get_args()
             logging.debug(f"COMMAND: ffmpeg " + " ".join(args))
