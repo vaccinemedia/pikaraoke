@@ -705,19 +705,19 @@ def get_default_dl_dir(platform):
 
 def get_default_filler_music_dir(platform):
     if raspberry_pi:
-        return "~/pikaraoke-mp3s"
+        return "~/pikaraoke-filler"
     elif platform == "windows":
-        legacy_directory = os.path.expanduser("~\\pikaraoke\\mp3s")
+        legacy_directory = os.path.expanduser("~\\pikaraoke\\filler")
         if os.path.exists(legacy_directory):
             return legacy_directory
         else:
-            return "~\\pikaraoke-mp3s"
+            return "~\\pikaraoke-filler"
     else:
-        legacy_directory = "~/pikaraoke/mp3s"
+        legacy_directory = "~/pikaraoke/filler"
         if os.path.exists(legacy_directory):
             return legacy_directory
         else:
-            return "~/pikaraoke-mp3s"
+            return "~/pikaraoke-filler"
 
 
 def main():

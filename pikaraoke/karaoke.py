@@ -77,7 +77,7 @@ class Karaoke:
         port=5555,
         ffmpeg_port=5556,
         download_path="/usr/lib/pikaraoke/songs",
-        filler_music_path="/usr/lib/pikaraoke/mp3s",  # New parameter for filler music
+        filler_music_path="/usr/lib/pikaraoke/filler",  # New parameter for filler music
         hide_url=False,
         hide_raspiwifi_instructions=False,
         hide_splash_screen=False,
@@ -820,7 +820,7 @@ class Karaoke:
     def run(self):
         logging.info("Starting PiKaraoke!")
         logging.info(f"Connect the player host to: {self.url}/splash")
-        logging.info(f"Add mp3s to: {self.filler_music_path} to play standard songs when there are no singers!")
+        logging.info(f"Add mp3s or mp4 videos to: {self.filler_music_path} to play standard songs when there are no singers!")
         self.running = True
         while self.running:
             try:
