@@ -360,8 +360,9 @@ class Karaoke:
             self.available_filler_songs = [
                 os.path.join(self.filler_music_path, f)
                 for f in os.listdir(self.filler_music_path)
-                if f.endswith('.mp3')
+                if f.endswith(('.mp3', '.mp4', '.m4a'))
             ]
+            logging.info(f"Loaded {len(self.available_filler_songs)} filler songs.")
         else:
             logging.warning(f"Filler music path {self.filler_music_path} does not exist.")
 
@@ -558,32 +559,48 @@ class Karaoke:
                         break
 
     def play_filler_file(self, file_path):
-        logging.info(f"Playing filler music file: {file_path}")
+        logging.info(f"Playing filler media file: {file_path}")
         stream_uid = int(time.time())
         stream_url = f"{self.ffmpeg_url}/{stream_uid}"
-        # pass a 0.0.0.0 IP to ffmpeg which will work for both hostnames and direct IP access
         ffmpeg_url = f"http://0.0.0.0:{self.ffmpeg_port}/{stream_uid}"
 
         try:
+            # Input file setup
             input = ffmpeg.input(file_path)
             audio = input.audio
+            video = input.video if file_path.endswith(('.mp4', '.mkv', '.mov')) else None
 
-            # Use 'copy' to avoid re-encoding the audio
-            output = ffmpeg.output(
-                audio,
-                ffmpeg_url,
-                acodec="copy",  # Directly copy the audio without re-encoding
-                listen=1,
-                f="mp3",
-            )
+            # Configure ffmpeg output
+            if video:
+                output = ffmpeg.output(
+                    audio,
+                    video,
+                    ffmpeg_url,
+                    vcodec="libx264",
+                    acodec="aac",
+                    preset="ultrafast",
+                    pix_fmt="yuv420p",
+                    listen=1,
+                    f="mp4",
+                    movflags="frag_keyframe+default_base_moof"
+                )
+            else:
+                output = ffmpeg.output(
+                    audio,
+                    ffmpeg_url,
+                    acodec="aac",
+                    listen=1,
+                    f="mp4"
+                )
 
             args = output.get_args()
             logging.debug(f"COMMAND: ffmpeg " + " ".join(args))
 
+            # Start streaming
             self.kill_ffmpeg()
             self.ffmpeg_process = output.run_async(pipe_stderr=True, pipe_stdin=True)
 
-            # Start logging ffmpeg output
+            # Process ffmpeg logs
             self.ffmpeg_log = Queue()
             t = Thread(target=enqueue_output, args=(self.ffmpeg_process.stderr, self.ffmpeg_log))
             t.daemon = True
@@ -598,31 +615,18 @@ class Karaoke:
                     pass
                 else:
                     if "Stream #" in decode_ignore(output):
-                        logging.debug("Filler music stream ready!")
+                        logging.info("Filler media stream ready!")
                         self.now_playing = self.filename_from_path(file_path)
                         self.now_playing_filename = file_path
                         self.now_playing_url = stream_url
-                        self.now_playing_user = "Filler Music"  # Display 'Filler Music' on the screen
+                        self.now_playing_user = "Filler Media"
                         self.is_paused = False
-
-                        # Pause until the stream is playing
-                        max_retries = 100
-                        while self.is_playing == False and max_retries > 0:
-                            time.sleep(0.1)  # prevents loop from trying to replay track
-                            max_retries -= 1
-                        if self.is_playing:
-                            logging.info("Filler song is playing")
-                            break
-                        else:
-                            logging.error(
-                                "Filler song was not playable! Run with debug logging to see output. Skipping track"
-                            )
-                            self.end_song()
-                            break
+                        self.is_playing = True
+                        break
 
         except Exception as e:
-            logging.error(f"Error playing filler music: {str(e)}")
-            self.end_song()  # Ensure we end the song in case of failure
+            logging.error(f"Error playing filler media: {str(e)}")
+            self.end_song()  # Reset states on error
 
     def kill_ffmpeg(self):
         logging.debug("Killing ffmpeg process")
