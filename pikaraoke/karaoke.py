@@ -114,7 +114,6 @@ class Karaoke:
         self.filler_music_path = filler_music_path  # Store filler music path
         self.filler_queue = []  # Initialize the filler queue
         self.available_filler_songs = []  # Initialize the available filler songs list
-        self.load_filler_songs()  # Populate the filler songs
 
         # other initializations
         self.platform = get_platform()
@@ -344,36 +343,27 @@ class Karaoke:
         self.available_songs = sorted(files_grabbed, key=lambda f: str.lower(os.path.basename(f)))
 
     def get_available_filler_songs(self):
-        logging.info(f"Fetching available filler songs in: {self.filler_music_path}")
-        filler_songs = []
+        """
+        Load all available filler songs from the specified filler_music_path.
+        Supports .mp3, .m4a audio files and .mp4 video files.
+        """
         P = Path(self.filler_music_path)
-        for file in P.rglob("*.mp3"):
-            if os.path.isfile(file.as_posix()):
-                logging.debug("adding filler song: " + file.name)
-                filler_songs.append(file.as_posix())
-
-        self.available_filler_songs = random.sample(filler_songs, len(filler_songs))
-
-    def load_filler_songs(self):
-        """Populates available filler songs from the filler_music_path."""
-        if os.path.exists(self.filler_music_path):
-            self.available_filler_songs = [
-                os.path.join(self.filler_music_path, f)
-                for f in os.listdir(self.filler_music_path)
-                if f.endswith(('.mp3', '.mp4', '.m4a'))
-            ]
-            logging.info(f"Loaded {len(self.available_filler_songs)} filler songs.")
-        else:
-            logging.warning(f"Filler music path {self.filler_music_path} does not exist.")
+        self.available_filler_songs = [
+            file.as_posix()
+            for file in P.rglob("*.*")
+            if os.path.isfile(file.as_posix()) and file.suffix.lower() in [".mp3", ".m4a", ".mp4"]
+        ]
 
     def queue_filler_music(self):
-        logging.info("Adding filler music to queue.")
+        """
+        Add available filler songs to the queue and randomize them.
+        Logs if there are no available filler songs.
+        """
         if not self.available_filler_songs:
             self.get_available_filler_songs()
 
         if self.available_filler_songs:
-            self.filler_queue = self.available_filler_songs.copy()
-            random.shuffle(self.filler_queue)
+            self.filler_queue = random.sample(self.available_filler_songs, len(self.available_filler_songs))
             logging.info(f"Filler music queue initialized with {len(self.filler_queue)} songs.")
         else:
             logging.warning("No available filler songs.")
