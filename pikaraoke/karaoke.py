@@ -558,30 +558,31 @@ class Karaoke:
             # Input file setup
             input = ffmpeg.input(file_path)
             audio = input.audio
-            video = input.video if file_path.endswith(('.mp4', '.mkv', '.mov')) else None
+
+            # Determine the duration of the audio file
+            probe = ffmpeg.probe(file_path)
+            duration = float(probe["format"]["duration"])
+
+            # If the file is audio-only, use the logo.png as a video source
+            if file_path.endswith(('.mp3', '.m4a')):
+                logo_path = self.logo_path  # Assuming self.logo_path is the path to logo.png
+                video = ffmpeg.input(self.logo_path, loop=1, t=duration).video
+            else:
+                video = input.video  # Use the video's own stream if it's a video file
 
             # Configure ffmpeg output
-            if video:
-                output = ffmpeg.output(
-                    audio,
-                    video,
-                    ffmpeg_url,
-                    vcodec="libx264",
-                    acodec="aac",
-                    preset="ultrafast",
-                    pix_fmt="yuv420p",
-                    listen=1,
-                    f="mp4",
-                    movflags="frag_keyframe+default_base_moof"
-                )
-            else:
-                output = ffmpeg.output(
-                    audio,
-                    ffmpeg_url,
-                    acodec="aac",
-                    listen=1,
-                    f="mp4"
-                )
+            output = ffmpeg.output(
+                audio,
+                video,
+                ffmpeg_url,
+                vcodec="libx264",
+                acodec="aac",
+                preset="ultrafast",
+                pix_fmt="yuv420p",
+                listen=1,
+                f="mp4",
+                movflags="frag_keyframe+default_base_moof"
+            )
 
             args = output.get_args()
             logging.debug(f"COMMAND: ffmpeg " + " ".join(args))
