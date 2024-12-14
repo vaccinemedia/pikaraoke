@@ -555,20 +555,23 @@ class Karaoke:
         ffmpeg_url = f"http://0.0.0.0:{self.ffmpeg_port}/{stream_uid}"
 
         try:
-            # Input file setup
-            input = ffmpeg.input(file_path)
-            audio = input.audio
+            # Kill any existing ffmpeg process
+            self.kill_ffmpeg()
 
-            # Determine the duration of the audio file
+            # Probe the file to determine its duration
             probe = ffmpeg.probe(file_path)
             duration = float(probe["format"]["duration"])
+            logging.debug(f"File duration: {duration} seconds")
 
-            # If the file is audio-only, use the logo.png as a video source
+            # Input file setup
+            input_audio = ffmpeg.input(file_path)
+            audio = input_audio.audio
+
+            # Use logo.png as the video source for audio-only files
             if file_path.endswith(('.mp3', '.m4a')):
-                logo_path = self.logo_path  # Assuming self.logo_path is the path to logo.png
                 video = ffmpeg.input(self.logo_path, loop=1, t=duration).video
             else:
-                video = input.video  # Use the video's own stream if it's a video file
+                video = input_audio.video  # Use the video's own stream if it's a video file
 
             # Configure ffmpeg output
             output = ffmpeg.output(
@@ -588,7 +591,6 @@ class Karaoke:
             logging.debug(f"COMMAND: ffmpeg " + " ".join(args))
 
             # Start streaming
-            self.kill_ffmpeg()
             self.ffmpeg_process = output.run_async(pipe_stderr=True, pipe_stdin=True)
 
             # Process ffmpeg logs
@@ -598,6 +600,7 @@ class Karaoke:
             t.start()
 
             # Wait for the stream to be ready
+            stream_ready = False
             while self.ffmpeg_process.poll() is None:
                 try:
                     output = self.ffmpeg_log.get_nowait()
@@ -607,6 +610,7 @@ class Karaoke:
                 else:
                     if "Stream #" in decode_ignore(output):
                         logging.info("Filler media stream ready!")
+                        stream_ready = True
                         self.now_playing = self.filename_from_path(file_path)
                         self.now_playing_filename = file_path
                         self.now_playing_url = stream_url
@@ -615,9 +619,26 @@ class Karaoke:
                         self.is_playing = True
                         break
 
+            if not stream_ready:
+                logging.error("Stream was not ready in time. Skipping filler song.")
+                self.end_song()  # Reset states and kill process
+                return
+
+            # Wait for the duration of the file or until stopped
+            play_start_time = time.time()
+            while time.time() - play_start_time < duration:
+                if self.ffmpeg_process.poll() is not None:
+                    logging.info("Filler media playback finished early.")
+                    break
+                time.sleep(0.1)  # Small delay to avoid busy-waiting
+
+            logging.info("Filler media playback finished.")
+
         except Exception as e:
             logging.error(f"Error playing filler media: {str(e)}")
-            self.end_song()  # Reset states on error
+        finally:
+            self.end_song()  # Ensure states are reset and ffmpeg is killed
+
 
     def kill_ffmpeg(self):
         logging.debug("Killing ffmpeg process")
