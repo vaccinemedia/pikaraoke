@@ -566,7 +566,7 @@ class Karaoke:
             # If the file is audio-only, use the logo.png as a video source
             if file_path.endswith(('.mp3', '.m4a')):
                 logo_path = self.logo_path  # Assuming self.logo_path is the path to logo.png
-                video = ffmpeg.input(self.logo_path, loop=1, t=duration).video
+                video = ffmpeg.input(self.logo_path, framerate=25, loop=1).video
             else:
                 video = input.video  # Use the video's own stream if it's a video file
 
