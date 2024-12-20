@@ -24,15 +24,29 @@ def get_ffmpeg_version():
 def is_raspberry_pi():
     try:
         return (
-            os.uname()[4][:3] == "arm" or os.uname()[4] == "aarch64"
-        ) and sys.platform != "darwin"
+            (os.uname()[4][:3] == "arm" or os.uname()[4] == "aarch64")
+            and sys.platform != "darwin"
+            and not is_android()
+        )
     except AttributeError:
         return False
+
+
+def is_android():
+    return os.path.exists("/system/app/") and os.path.exists("/system/priv-app")
 
 
 def get_platform():
     if sys.platform == "darwin":
         return "osx"
+    # elif sys.platform.startswith("linux"):
+    #    for key in os.environ:
+    #        if key == "PREFIX":
+    #            if "termux" in os.environ[key]:
+    #                return "Termux on Android"
+    #    return "linux"
+    elif is_android():
+        return "android"
     elif is_raspberry_pi():
         try:
             with open("/proc/device-tree/model", "r") as file:
@@ -56,6 +70,10 @@ def get_os_version():
 def supports_hardware_h264_encoding():
     if is_raspberry_pi():
         platform = get_platform()
+
+        # For other platform(OrangePI etc)
+        if platform is None:
+            return False
 
         # Raspberry Pi >= 5 no longer has hardware GPU decoding
         match = re.search(r"Raspberry Pi (\d+)", platform)

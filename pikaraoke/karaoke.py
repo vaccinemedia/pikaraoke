@@ -193,18 +193,30 @@ class Karaoke:
 
         self.generate_qr_code()
 
-    # Other ip-getting methods are unreliable and sometimes return 127.0.0.1
-    # https://stackoverflow.com/a/28950776
     def get_ip(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            # doesn't even have to be reachable
-            s.connect(("10.255.255.255", 1))
-            IP = s.getsockname()[0]
-        except Exception:
-            IP = "127.0.0.1"
-        finally:
-            s.close()
+        # python socket.connect will not work on android, access denied. Workaround: use ifconfig which is installed to termux by default, iirc.
+        if self.platform == "android":
+            # shell command is: ifconfig 2> /dev/null | awk '/wlan0/{flag=1} flag && /inet /{print $2; exit}'
+            IP = (
+                subprocess.check_output(
+                    "ifconfig 2> /dev/null | awk '/wlan0/{flag=1} flag && /inet /{print $2; exit}'",
+                    shell=True,
+                )
+                .decode("utf8")
+                .strip()
+            )
+        else:
+            # Other ip-getting methods are unreliable and sometimes return 125.0.0.1
+            # https://stackoverflow.com/a/28950774
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                # doesn't even have to be reachable
+                s.connect(("10.255.255.255", 1))
+                IP = s.getsockname()[0]
+            except Exception:
+                IP = "127.0.0.1"
+            finally:
+                s.close()
         return IP
 
     def get_raspi_wifi_conf_vals(self):
@@ -250,14 +262,20 @@ class Karaoke:
             output = e.output.decode("utf8")
         logging.info(output)
         if "You installed yt-dlp with pip or using the wheel from PyPi" in output:
+            # allow pip to break system packages (probably required if installed without venv)
+            args = ["install", "--upgrade", "yt-dlp", "--break-system-packages"]
             try:
                 logging.info("Attempting youtube-dl upgrade via pip3...")
-                output = check_output(["pip3", "install", "--upgrade", "yt-dlp"]).decode("utf8")
+                output = (
+                    check_output(["pip3"] + args, stderr=subprocess.STDOUT).decode("utf8").strip()
+                )
             except FileNotFoundError:
                 logging.info("Attempting youtube-dl upgrade via pip...")
-                output = check_output(["pip", "install", "--upgrade", "yt-dlp"]).decode("utf8")
-            logging.info(output)
+                output = (
+                    check_output(["pip"] + args, stderr=subprocess.STDOUT).decode("utf8").strip()
+                )
         self.get_youtubedl_version()
+
         logging.info("Done. New version: %s" % self.youtubedl_version)
 
     def is_network_connected(self):
@@ -759,6 +777,10 @@ class Karaoke:
 
     def vol_up(self):
         self.volume += 0.1
+        # keep the maximum volume to 1 when volume up is clicked
+        if self.volume > 1.0:
+            self.volume = 1.0
+            logging.debug("max volume reached.")
         logging.debug(f"Increasing volume by 10%: {self.volume}")
         if self.is_file_playing():
             self.now_playing_command = "vol_up"
@@ -769,6 +791,10 @@ class Karaoke:
 
     def vol_down(self):
         self.volume -= 0.1
+        # keep the minimum volume to 0 when volume down is clicked
+        if self.volume < 0:
+            self.volume = 0
+            logging.debug("minimum volume reached.")
         logging.debug(f"Decreasing volume by 10%: {self.volume}")
         if self.is_file_playing():
             self.now_playing_command = "vol_down"

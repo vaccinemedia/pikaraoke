@@ -26,6 +26,7 @@ from flask import (
 from flask_babel import Babel
 from flask_paginate import Pagination, get_page_parameter
 from selenium import webdriver
+from selenium.common.exceptions import SessionNotCreatedException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -550,7 +551,10 @@ def info():
     url = k.url
 
     # cpu
-    cpu = str(psutil.cpu_percent()) + "%"
+    try:
+        cpu = str(psutil.cpu_percent()) + "%"
+    except:
+        cpu = "CPU usage query unsupported"
 
     # mem
     memory = psutil.virtual_memory()
@@ -889,6 +893,7 @@ def main():
     args = parser.parse_args()
 
     if args.admin_password:
+        global admin_password
         admin_password = args.admin_password
 
     app.jinja_env.globals.update(filename_from_path=filename_from_path)
@@ -957,6 +962,10 @@ def main():
     )
     cherrypy.engine.start()
 
+    # force headless mode when on Android
+    if (platform == "android") and not args.hide_splash_screen:
+        args.hide_splash_screen = True
+        logging.info("Forced to run headless mode in Android")
     # Start the splash screen using selenium
     if not args.hide_splash_screen:
         if raspberry_pi:
@@ -972,13 +981,21 @@ def main():
         options.add_argument("--kiosk")
         options.add_argument("--start-maximized")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        driver = webdriver.Chrome(service=service, options=options)
-        driver.get(f"{k.url}/splash")
-        driver.add_cookie({"name": "user", "value": "PiKaraoke-Host"})
-        # Clicking this counts as an interaction, which will allow the browser to autoplay audio
-        wait = WebDriverWait(driver, 60)
-        elem = wait.until(EC.element_to_be_clickable((By.ID, "permissions-button")))
-        elem.click()
+        try:
+            driver = webdriver.Chrome(service=service, options=options)
+            driver.get(f"{k.url}/splash")
+            driver.add_cookie({"name": "user", "value": "PiKaraoke-Host"})
+            # Clicking this counts as an interaction, which will allow the browser to autoplay audio
+            wait = WebDriverWait(driver, 60)
+            elem = wait.until(EC.element_to_be_clickable((By.ID, "permissions-button")))
+            elem.click()
+        except SessionNotCreatedException as e:
+            print(str(e))
+            print(
+                f"\n[ERROR] Error starting splash screen. If you're running headed mode over SSH, you may need to run `export DISPLAY=:0.0` first to target the host machine's screen. Example: `export DISPLAY=:0.0; pikaraoke`\n"
+            )
+            cherrypy.engine.exit()
+            sys.exit()
 
     # Start the karaoke process
     k.run()
